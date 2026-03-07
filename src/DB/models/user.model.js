@@ -3,6 +3,7 @@ import { RoleEnum,GenderEnum, ProviderEnum } from "../../common/enum/user.enum.j
 
 
 
+
 const userSchema = new mongoose.Schema({
     firstName:{
         type:String,
@@ -23,7 +24,6 @@ const userSchema = new mongoose.Schema({
         required: true,
         unique:true,
         trim: true,
-        lowercase:true
     },
     password:{
         type:String,
@@ -40,7 +40,14 @@ const userSchema = new mongoose.Schema({
         default: GenderEnum.male
     },
     phone:{type:String},
-    profilePicture:String,
+    profilePicture:{
+        secure_url : String , 
+        public_id: String 
+    },
+    coverPictures:[{
+        secure_url : {type : String , required:true},
+        public_id: {type : String , required:true}
+    }],
     confirmed:Boolean,
     provider:{
         type: String,
@@ -57,7 +64,7 @@ const userSchema = new mongoose.Schema({
     }
 },{
     timestamps: true,
-    strictQuery: true,
+    strictQuery: true, 
     toJSON: {virtuals:true},
     toObject: {virtuals:true}
 

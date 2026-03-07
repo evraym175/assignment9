@@ -1,7 +1,7 @@
-import { SECRET_KEY } from "../../../config/config.service.js"
+import { PREFIX, SECRET_KEY } from "../../../config/config.service.js"
 import userModel from "../../DB/models/user.model.js"
 import { VerifyToken } from "../utils/token.service.js"
-import * as db_service from "../../DB/db.service.js"
+import * as db_service from "../DB/db.service.js"
 
 
 
@@ -14,7 +14,7 @@ export const authentication = async (req, res, next) => {
 }
 
     const [prefix, token] = authorization.split(" ")
-    if (prefix !== "bearer") {
+    if (prefix !== PREFIX) {
         throw new Error("inValid token prefix");
     
 }

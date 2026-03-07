@@ -7,7 +7,7 @@ const checkConnectionDB = async () => {
         console.log(`DB Connected Successfully to ${DB_URI}...✅`);  
     })
     .catch((error)=>{
-        console.log(error,` DB Failed TO connect..❌`);
+        console.log(error,` DB Failed TO connect..`);
         
     })
 

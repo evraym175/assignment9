@@ -1,5 +1,6 @@
 import crypto from "node:crypto"
 
+//  Use 32 bytes (256 bits) for AES-256
 const ENCRYPTION_KEY = Buffer.from("1234!#Wasd52@Qesdcf5664!#EWDs645"); // You should store this securely (e.g., env variable)
 const IV_LENGTH = 16; // For AES, the IV is always 16 bytes
 
@@ -17,6 +18,7 @@ export function encrypt(text) {
 
 
 
+// Decrypt function
 export function decrypt(text) {
 
     const [ivHex, encryptedText] = text.split(':');
