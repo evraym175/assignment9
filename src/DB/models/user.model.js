@@ -43,11 +43,12 @@ const userSchema = new mongoose.Schema({
     profilePicture:{
         secure_url : String , 
         public_id: String 
+        ,coverPictures:[{
+            secure_url : {type : String , required:true},
+            public_id: {type : String , required:true}
+        }],
     },
-    coverPictures:[{
-        secure_url : {type : String , required:true},
-        public_id: {type : String , required:true}
-    }],
+    changeCredential:Date,
     confirmed:Boolean,
     provider:{
         type: String,

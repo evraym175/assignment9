@@ -3,7 +3,7 @@ import { successResponse } from "../../common/utils/response.success.js";
 import { decrypt, encrypt } from "../../common/utils/security/encrypt.security.js";
 import { Compare, Hash } from "../../common/utils/security/hash.security.js";
 import { GenerateToken, VerifyToken } from "../../common/utils/token.service.js";
-import * as db_service from "../DB/db.service.js";
+import * as db_service from "../../DB/db.service.js";
 import userModel from "../../DB/models/user.model.js";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
@@ -11,11 +11,15 @@ import {OAuth2Client} from "google-auth-library"
 import { PREFIX, REFRESH_SECRET_KEY, SALT_ROUNDS, SECRET_KEY } from "../../../config/config.service.js";
 import cloudinary from "../../common/utils/cloudinary.js";
 import { compare } from "bcrypt";
-// express > version 5   
+import { randomUUID } from "node:crypto";
+import revokeTokenModel from "../../DB/models/revokeToken.model.js";
+import { deletekey, get_key, keys, revoke_key, setValue } from "../../DB/redis/redis.service.js";
+// express > version 5 بتعملها لوحدها 
 // const asyncHandler = (fn)=>{ 
 //     return (req, res, next) => {
 //         fn(req,res,next).catch((error)=>{
 //             // res.status(404).json({msg:error.message})
+//             next(error) // دي اللي بتودي لل global error handling
 //         })
 //     }
 // }
@@ -29,6 +33,7 @@ export const signUp = async (req, res, next) => {
 
     console.log(req.file);
     
+//      // ahmedali لو حد معملش مسافه اعمل ايه ؟
 //     //if(userName.split(" ") length<2){}
 
 //     if (password !== cpassword) {
@@ -43,12 +48,13 @@ export const signUp = async (req, res, next) => {
         await db_service.findOne({model:userModel,filter: {email} })) {
         //return res.status(409).json({message:`Email Already Exist`})
         throw new Error("Email Already Exist") 
+        // بعد كده اي ايرور هيحصل اعمله ب ثرو
     }
 
 
     const {secure_url,public_id} = await cloudinary.uploader.upload(req.file.path,{
         folder:"Saraha_app",
-        //public_id: "evraym"
+        //public_id: "khaled"
         // use_filename: true,
         // unique_filename: false,
         resource_type:"image"
@@ -69,7 +75,7 @@ export const signUp = async (req, res, next) => {
         profilePicture : {secure_url ,public_id},
         //coverPictures : array_path
     }})
-   //res.status(201).json({message : `Done..`,user})
+   //res.status(201).json({message : `Done..👌`,user})
     successResponse({res,status:201 , data:user})
 
 }
@@ -140,6 +146,7 @@ export const signIn = async (req, res, next) => {
         //res.status(400).json({message:`Uncorrect Password`})
         throw new Error("Uncorrect Password",{cause : 400})
     }
+    const jwtid = randomUUID()
     
     // create token
     const access_token = GenerateToken({
@@ -150,7 +157,7 @@ export const signIn = async (req, res, next) => {
             //notBefore :60*60,
             //audience:"http//als",
             //noTimestamp:true
-            //jwtid:uuidv4()
+            jwtid
         }
     })
             // refresh token
@@ -159,13 +166,14 @@ export const signIn = async (req, res, next) => {
         secret_key:REFRESH_SECRET_KEY,
         options:{
             expiresIn: "1y",
+            jwtid
         }
 
     })
         successResponse({res,message:"success Sign In" , data: {access_token,refresh_token}})
 
 
-    //res.status(201).json({message : `Done..`,user})
+    //res.status(201).json({message : `Done.`,user})
     
 }
 
@@ -174,14 +182,23 @@ export const getProfile = async (req, res, next) => {
     // const {id} = req.params
 
     // const {authorization} = req.headers
-    // const decoded = VerifyToken({token:authorization,secret_key:"batman"})
+    // const decoded = VerifyToken({token:authorization,secret_key:"evraym"})
 
-    
-
-
-    //res.status(201).json({message : `Done..`,user})
+    //res.status(201).json({message : `Done.`,user})
     // console.log(req.user);
     
+    const key = `profile::${req.user._id}`
+
+    const userExist = await get(key)
+    if(userExist){
+        console.log("from cache");
+        
+        return successResponse({res, data : userExist })
+    }
+        console.log("out cache");
+
+    await setValue({ key, value: req.user , ttl : 60})
+
     successResponse({res, data : req.user })
 
 }
@@ -223,6 +240,7 @@ export const updateProfile = async (req, res, next) => {
         throw new Error("user Not Exist");
         
     }
+    await deletekey(`profile::${req.user._id}`)
     
     successResponse({res, data : user })
 
@@ -276,6 +294,12 @@ export const refresh_token = async (req, res, next) => {
         throw new Error("user not exist", { cause: 400 });
     
     }
+    const revokeToken = await db_service.findOne({ model : revokeTokenModel, filter: {tokenId: decoded.jti}})
+    if (revokeToken) {
+        throw new Error("Invalid Token revoked");
+        
+    }
+    
 
         const access_token = GenerateToken({
         payload:{ id :user._id,email:user.email},
@@ -290,3 +314,35 @@ export const refresh_token = async (req, res, next) => {
 
 }
 
+
+export const logout = async (req, res, next) => {
+
+    const {flag} = req.query
+    if (flag === "all"){
+        req.user.changeCredential = new Date()
+        await req.user.save()
+        await deletekey(await keys(get_key({userId : req.user._id})))
+
+        // await db_service.deleteMany({ model:revokeTokenModel, filter:{ userId:req.user._id}})
+
+
+    } else{
+        await setValue({
+            key : revoke_key({ userId:req.user._id , jti:req.decoded.jti}),
+            value :`${req.decoded.jti}`,
+            ttl : req.decoded.exp - Math.floor(Date.now()/1000)
+        })
+        // await db_service.create({
+        //     model : revokeTokenModel,
+        //     data:{
+        //         tokenId :req.decoded.jti,
+        //         userId :req.user._id,
+        //         expiredAt : new Date(req.decoded.exp * 1000)
+        //     }
+        // })
+    }
+
+    
+    successResponse({res})
+
+}

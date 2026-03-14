@@ -48,3 +48,12 @@ export const findOneAndUpdate = async({ model,filter ={}, update = {} , options 
     const doc =  model.findOneAndUpdate(filter,update,{new:true, runValidators : true, ...options})
     return await doc.exec()
 }
+
+
+export const deleteOne = async ({ model , filter = {}} = {})=>{
+    return await model.deleteOne(filter)
+}
+
+export const deleteMany = async ({ model , filter = {}} = {})=>{
+    return await model.deleteMany(filter)
+}
