@@ -15,14 +15,22 @@ const userRouter = Router()
 
 userRouter.post("/signUp",
     multer_server(multer_enum.image).single("attachment"),
-    validation(UV.signupSchema),  
+    validation(UV.signupSchema),
     US.signUp
 )
 
 userRouter.post("/signup/gmail",US.signupWithGmail)
+userRouter.patch("/confirm-email",validation(UV.confirmEmailSchema),US.confirmEmail)
+
+userRouter.post("/resend-otp",validation(UV.resendOtpSchema),US.resendOtp)   
+
 userRouter.post("/signIn",validation(UV.signInSchema),US.signIn)
 userRouter.get("/refresh-token",US.refresh_token)
 userRouter.get("/profile",authentication,US.getProfile)
+
+userRouter.patch("/forget-password",validation(UV.resendOtpSchema),US.forgetPassword)
+userRouter.patch("/reset-password",validation(UV.rsetPasswordSchema),US.resetPassword)
+
 userRouter.patch("/update-profile",authentication,validation(UV.updateProfileSchema),US.updateProfile)
 userRouter.get("/share-profile/:id",validation(UV.shareProfileSchema),US.shareProfile)
 userRouter.patch("/update-password",authentication,validation(UV.updatePasswordSchema),US.updatePassword)

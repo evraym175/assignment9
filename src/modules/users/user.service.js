@@ -5,25 +5,62 @@ import { Compare, Hash } from "../../common/utils/security/hash.security.js";
 import { GenerateToken, VerifyToken } from "../../common/utils/token.service.js";
 import * as db_service from "../../DB/db.service.js";
 import userModel from "../../DB/models/user.model.js";
+import revokeTokenModel from "../../DB/models/revokeToken.model.js";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import {OAuth2Client} from "google-auth-library"
 import { PREFIX, REFRESH_SECRET_KEY, SALT_ROUNDS, SECRET_KEY } from "../../../config/config.service.js";
 import cloudinary from "../../common/utils/cloudinary.js";
 import { compare } from "bcrypt";
-import { randomUUID } from "node:crypto";
-import revokeTokenModel from "../../DB/models/revokeToken.model.js";
-import { deletekey, get_key, keys, revoke_key, setValue } from "../../DB/redis/redis.service.js";
-// express > version 5 بتعملها لوحدها 
+import { hash, randomUUID } from "node:crypto";
+import { deletekey, get_key, incr, keys, max_otp_key, otp_key, revoke_key, setValue, ttl, get, block_otp_key } from "../../DB/redis/redis.service.js";
+import { genertaeOtp, sendEmail } from "../../common/utils/email/send.email.js";
+import { emailTemplate } from "../../common/utils/email/email.template.js";
+import { eventEmitter } from "../../common/utils/email/email.events.js";
 // const asyncHandler = (fn)=>{ 
 //     return (req, res, next) => {
 //         fn(req,res,next).catch((error)=>{
 //             // res.status(404).json({msg:error.message})
-//             next(error) // دي اللي بتودي لل global error handling
 //         })
 //     }
 // }
 
+
+const sendEmailOtp = async ({ email , subject } = {}) => {
+    const isBlocked = await ttl(block_otp_key({ email }))
+    if (isBlocked > 0) {
+        throw new Error(`you have requested many times, please try again later after ${isBlocked} seconds`);
+    }
+
+    const otpTTl = await ttl(otp_key({ email , subject })) 
+    if (otpTTl > 0) {
+        throw new Error(`you can request new otp after ${otpTTl - 60} seconds`)
+    }
+
+    const maxTry = await get(max_otp_key({ email }))
+    if (maxTry >= 3) {
+        await setValue({ key: block_otp_key({ email }), value: 1, ttl: 60 })
+        throw new Error("you have exceeded the maximum number of tries, please try again later")
+    }
+
+    const otp = await genertaeOtp()
+    
+    eventEmitter.emit(emailEnum.confirmEmail, async () => {
+        await sendEmail({
+            to: email,
+            subject: "welcome to Saraha App",
+            html: emailTemplate(otp)
+        })
+
+        await setValue({ 
+            key: otp_key({ email, subject }), 
+            value: Hash({ plainText: `${otp}` }), 
+            ttl: 60 * 2 
+        })
+
+        await incr({ key: max_otp_key({ email }) })
+    })
+}
 
 
 
@@ -33,7 +70,6 @@ export const signUp = async (req, res, next) => {
 
     console.log(req.file);
     
-//      // ahmedali لو حد معملش مسافه اعمل ايه ؟
 //     //if(userName.split(" ") length<2){}
 
 //     if (password !== cpassword) {
@@ -48,13 +84,12 @@ export const signUp = async (req, res, next) => {
         await db_service.findOne({model:userModel,filter: {email} })) {
         //return res.status(409).json({message:`Email Already Exist`})
         throw new Error("Email Already Exist") 
-        // بعد كده اي ايرور هيحصل اعمله ب ثرو
     }
 
 
     const {secure_url,public_id} = await cloudinary.uploader.upload(req.file.path,{
         folder:"Saraha_app",
-        //public_id: "khaled"
+        //public_id: "evraym"
         // use_filename: true,
         // unique_filename: false,
         resource_type:"image"
@@ -75,9 +110,76 @@ export const signUp = async (req, res, next) => {
         profilePicture : {secure_url ,public_id},
         //coverPictures : array_path
     }})
-   //res.status(201).json({message : `Done..👌`,user})
-    successResponse({res,status:201 , data:user})
+    const otp = await genertaeOtp()
+    eventEmitter.emit(emailEnum.confirmEmail, async () => {
 
+        await sendEmail({
+        to : email,
+        subject : "welcome to Saraha App",
+        html: emailTemplate(otp)
+    })
+
+    await setValue({ key: otp_key({email,subject:emailEnum.confirmEmail}) , value : Hash({plainText : `${otp}`}) , ttl: 60 * 2})
+
+
+    await setValue({ key: max_otp_key({email}) , value : 1 , ttl: 30})
+
+    })
+    
+    
+    successResponse({res,status:201 ,message : "success signup", data:user})
+
+
+}
+
+export const confirmEmail = async (req,res,next) => {
+    const { email , code} = req.body 
+    const otpExist = await get(otp_key({email}))
+
+    if(!otpExist){
+        throw new Error("otp Expired");
+        
+    }
+    if (!Compare({plainText: code ,cipher_text: otpExist})){
+        throw new Error("invalid Otp");
+        
+    }
+
+    const user = db_service.findOneAndUpdate({
+        model:userModel,
+        filter:{email , confirmed:{$exists:false},provider: ProviderEnum.system},
+        update :{confirmed : true}
+
+    })
+    
+    if(!user){
+        throw new Error("user not exist");
+        
+    }
+    await deletekey(otp_key({email ,subject:emailEnum.confirmEmail}))
+    successResponse({res,message:"email confirmed successfuly "
+    })
+}
+
+export const resendOtp = async (req,res,next) => {
+    const { email } = req.body 
+
+
+    const user = db_service.findOne({
+        model:userModel,
+        filter:{email , confirmed:{$exists:false},provider: ProviderEnum.system},
+    })
+    
+    if(!user){
+        throw new Error("user not exist or already confirmed");
+        
+    }
+
+
+
+    await sendEmailOtp({email, subject:emailEnum.confirmEmail})
+    successResponse({res,message:"email confirmed successfuly "
+    })
 }
 
 // Sign Up with gmail 
@@ -135,7 +237,13 @@ if (user.provider == ProviderEnum.system){
 export const signIn = async (req, res, next) => {
     const {email, password} = req.body
 
-    const user = await db_service.findOne({model:userModel,filter:{email , provider: ProviderEnum.system}})
+    const user = await db_service.findOne({
+        model:userModel,filter:{
+            email ,
+            provider: ProviderEnum.system,
+            confirmed:{$exists: true}
+        }
+    })
     if(!user) {
         //return res.status(409).json({message:`User Not Exist`})
         throw new Error("User Not Exist",{cause:400})
@@ -173,9 +281,64 @@ export const signIn = async (req, res, next) => {
         successResponse({res,message:"success Sign In" , data: {access_token,refresh_token}})
 
 
-    //res.status(201).json({message : `Done.`,user})
+    //res.status(201).json({message : `Done..`,user})
     
 }
+
+export const forgetPassword = async (req, res, next) => {
+    const {email} = req.body
+
+    const user = await db_service.findOne({
+        model:userModel,
+        filter:{
+            email ,
+            provider: ProviderEnum.system,
+            confirmed:{$exists: true}
+        }
+    })
+    if(!user) {
+        throw new Error("User Not Exist",{cause:400})
+    }
+
+    await sendEmailOtp({email, subject:emailEnum.forgetPassword})
+    successResponse({res,message:"otp sent to your email successfuly "})
+    
+}
+
+export const resetPassword = async (req, res, next) => {
+    const {email , code , password} = req.body
+
+    const otpValue = await get(otp_key({email, subject:emailEnum.forgetPassword}))
+    if(!otpValue){
+        throw new Error("otp Expired");
+    }
+
+    if (!Compare({plainText: code ,cipher_text: otpValue})){
+        throw new Error("invalid Otp");
+    }
+
+    const user = await db_service.findOneAndUpdate({
+        model:userModel,
+        filter:{
+            email ,
+            provider: ProviderEnum.system,
+            confirmed:{$exists: true}
+        },
+        update:{
+            password:  Hash({plainText:password }),
+            changeCredential: new Date()
+        }
+    })
+    if(!user) {
+        throw new Error("User Not Exist",{cause:400})
+    }
+
+    await deletekey(otp_key({email, subject:emailEnum.forgetPassword}))
+
+    successResponse({res,message:"password changed successfuly "})
+    
+}
+
 
 
 export const getProfile = async (req, res, next) => {
@@ -250,16 +413,18 @@ export const updatePassword = async (req, res, next) => {
 
     let {oldPassword , newPassword} = req.body
     
-    if(!compare({plainText:oldPassword , cipherText:req.user.password})){
+    if(!Compare({plainText:oldPassword , cipherText:req.user.password})){
         throw new Error("inValid old password");
         
     }
 
-    const hash = Hash({ plainText : newPassword})
+    const hash = Hash({ plainText : newPassword, salt_rounds: SALT_ROUNDS})
 
     req.user.password = hash
+    req.user.changeCredential = new Date()
+
     await req.user.save()
-    successResponse({res, })
+    successResponse({res, message : "password updated successfuly" })
 
 }
 

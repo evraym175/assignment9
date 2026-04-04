@@ -1,7 +1,11 @@
 import joi from "joi"
 import { Types } from "mongoose"
 
+const customId=(v,h)=>{
+    const value = Types.ObjectId.isValid(v)
+    return value ? v : h.message("Invalid id")
 
+}
 export const general_rules = {
     email: joi.string().email({tlds : {allow:true},minDomainSegments:2,maxDomainSegments:2}),
     password: joi.string().regex(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]){8,}/),

@@ -1,21 +1,35 @@
+import { json } from "express";
 import { redisClient } from "./redis.db.js";
 
-export const revoke_key = (userId,jti)=>{
+export const revoke_key = ({userId,jti})=>{
     return `revoke_token  ::${userId}::${jti}`
 }
 
-export const get_key = (userId)=>{
+export const get_key = ({userId})=>{
     return `revoke_token::${userId}`
+}
+
+export const otp_key = ({email,subject = emailEnum.confirmEmail})=>{
+    return `otp::${email}`
+}
+
+export const max_otp_key = ({email})=>{
+    return `otp_key::${email}::max_try`
+}
+
+export const block_otp_key = ({email})=>{
+    return `otp_key::${email}::block`
 }
 
 
 export const setValue = async ({key,value,ttl}= {}) => {
     try {
-        const data = typeof value === "string" ? value :json.stringify(value)
-    return ttl ? await redisClient.set(key,value,{EX :ttl}) : await redisClient.set(key,value)
+        const data = typeof value === "string" ? value : JSON.stringify(value);
+        return ttl 
+            ? await redisClient.set(key, data, { EX: ttl }) 
+            : await redisClient.set(key, data);
     } catch (error) {
-        console.log("error to set data in redis",error);
-        
+        console.log("error to set data in redis", error);
     }
 }
 
@@ -80,6 +94,16 @@ export const keys = async (pattern) => {
     return await redisClient.keys(`${pattern} *`)
     } catch (error) {
     console.log("error to get keys from redis", error);
+
+    }
+
+}
+
+export const incr = async (pattern) => {
+    try {
+    return await redisClient.incr(key)
+    } catch (error) {
+    console.log(error, "fail to incr operation")
 
     }
 

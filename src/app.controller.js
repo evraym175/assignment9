@@ -1,4 +1,3 @@
-
 import express from "express";
 import checkConnectionDB from "./DB/connectionDB.js";
 import userRouter from "./modules/users/user.controller.js";
@@ -6,6 +5,7 @@ import cors from "cors"
 import { PORT } from "../config/config.service.js";
 import { redisClient, redisConnection } from "./DB/redis/redis.db.js";
 import { set } from "mongoose";
+import messageRouter from "./modules/messages/message.controller.js";
 
 const app = express();
 const port = PORT
@@ -21,22 +21,23 @@ const bootstrap = async () => {
     redisConnection()
 
 
-    //await redisClient.set("name", "khaled")
     // const name = await redisClient.exists("name")
     // console.log(name);
     
 
 
     app.use("/uploads",express.static("uploads"))
+    // routes
     app.use("/users",userRouter)
+    app.use("/messages",messageRouter)
 
     app.get("/",(req,res,next)=>{
-        res.status(200).json({message:`Welcome ON Saraha APP ...💬`})
+        res.status(200).json({message:`Welcome ON Saraha APP ..`})
     })
 
     app.use("{/*demo}",(req,res,next)=>{
         //res.status(404).json({message:` Url ${req.originalUrl} Not Found..`})
-        throw new Error(`Url ${req.originalUrl} Not Found..`,{cause:404})
+        throw new Error(`Url ${req.originalUrl} Not Found...`,{cause:404})
     })
     app.use((err, req, res, next) => {
         res.status(err.cause || 500).json({message : err.message , stack:err.stack,error:err})
@@ -45,7 +46,7 @@ const bootstrap = async () => {
 
 
     app.listen(port,()=>{
-        console.log(`server is Running on port ${port}..⏳`);
+        console.log(`server is Running on port ${port}.`);
     })
 
 }

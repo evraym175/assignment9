@@ -17,6 +17,30 @@ export const signupSchema = {
     file: general_rules.file.required()
 }
 
+export const rsetPasswordSchema = {
+
+    body : joi.object({
+        code: joi.string().length(6).required(),
+        cpassword: general_rules.cpassword.required(),
+        
+}).required(),
+
+    file: general_rules.file.required()
+}
+
+export const resendOtpSchema = {
+    body: joi.object({
+        email: general_rules.email.required()
+    }).required()
+}
+
+export const confirmEmailSchema = {
+    body: joi.object({
+        email: general_rules.email.required(),
+        code: joi.string().length(6).required(),
+    }).required()
+}
+
 //     files:joi.array().max(2).items(
 //         joi.object({
 //         fieldname :joi.string().required(),
